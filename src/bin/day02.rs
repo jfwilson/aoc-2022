@@ -4,13 +4,13 @@ fn main() -> Result<()> {
     let path = Path::new("./data/day02.txt");
     let lines: Vec<String> = BufReader::new(File::open(path)?).lines().collect::<Result<Vec<String>>>()?;
 
-    let score = total_score(&lines);
-
-    println!("max_calories  = {}", score);
+    println!("problem1 = {}", problem1_score(&lines));
+    println!("problem2 = {}", problem2_score(&lines));
     Result::Ok(())
 }
 
-fn total_score(strategy: &Vec<String>) -> u64 {
+fn problem1_score(strategy: &Vec<String>) -> u64 {
+    // X = rock, Y = paper, Z = scissors
     strategy.into_iter().map(|line| match line.as_str() {
         // A = Rock vs
         "A X" => 1 + 3,
@@ -24,6 +24,25 @@ fn total_score(strategy: &Vec<String>) -> u64 {
         "C X" => 1 + 6,
         "C Y" => 2 + 0,
         "C Z" => 3 + 3,
+        _ => panic!("Unexpected input")
+    }).sum()
+}
+
+fn problem2_score(strategy: &Vec<String>) -> u64 {
+    // X = lose, Y = draw, Z = win
+    strategy.into_iter().map(|line| match line.as_str() {
+        // A = Rock vs
+        "A X" => 3 + 0,
+        "A Y" => 1 + 3,
+        "A Z" => 2 + 6,
+        // B = Paper vs
+        "B X" => 1 + 0,
+        "B Y" => 2 + 3,
+        "B Z" => 3 + 6,
+        // C = Scissors vs
+        "C X" => 2 + 0,
+        "C Y" => 3 + 3,
+        "C Z" => 1 + 6,
         _ => panic!("Unexpected input")
     }).sum()
 }
@@ -43,15 +62,15 @@ C Z";
 
     #[test]
     fn problem1() {
-        let answer = total_score(&load_test_data());
+        let answer = problem1_score(&load_test_data());
 
         assert_eq!(answer, 15);
     }
 
     #[test]
     fn problem2() {
-        let answer = total_score(&load_test_data());
+        let answer = problem2_score(&load_test_data());
 
-        assert_eq!(answer, 45000);
+        assert_eq!(answer, 12);
     }
 }
