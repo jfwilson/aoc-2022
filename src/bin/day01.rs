@@ -1,5 +1,9 @@
-use std::{io::{BufReader, Result, BufRead, ErrorKind}, fs::File, path::Path};
 use std::str::FromStr;
+use std::{
+    fs::File,
+    io::{BufRead, BufReader, ErrorKind, Result},
+    path::Path,
+};
 
 fn main() -> Result<()> {
     let path = Path::new("./data/day01.txt");
@@ -57,7 +61,7 @@ mod tests {
 9000
 
 10000";
-    
+
     fn parse_test_data() -> Vec<usize> {
         count_calories(INPUT.lines().map(|s| Result::Ok(String::from(s)))).unwrap()
     }
