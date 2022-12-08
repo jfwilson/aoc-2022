@@ -19,7 +19,7 @@ fn main() -> Result<()> {
 }
 
 struct Dir {
-    total_size: usize
+    total_size: usize,
 }
 
 impl Dir {
@@ -42,7 +42,11 @@ fn parse_dirs(input: &Vec<String>) -> Vec<Dir> {
         } else if line.starts_with("$ cd ") {
             let dir = Dir::new();
             cwd.push(dir);
-        } else if let Some(size) = line.split(' ').next().and_then(|size| usize::from_str(size).ok()) {
+        } else if let Some(size) = line
+            .split(' ')
+            .next()
+            .and_then(|size| usize::from_str(size).ok())
+        {
             for dir in cwd.iter_mut() {
                 dir.add_file(size);
             }
@@ -53,14 +57,22 @@ fn parse_dirs(input: &Vec<String>) -> Vec<Dir> {
 }
 
 fn problem1_solution(input: &Vec<String>) -> usize {
-    parse_dirs(input).into_iter().map(|dir| dir.total_size).filter(|size| *size <= 100000).sum()
+    parse_dirs(input)
+        .into_iter()
+        .map(|dir| dir.total_size)
+        .filter(|size| *size <= 100000)
+        .sum()
 }
 
 fn problem2_solution(input: &Vec<String>) -> usize {
     let dirs = &parse_dirs(input);
     let used_space = dirs.into_iter().map(|dir| dir.total_size).max().unwrap();
     let space_needed_to_free = used_space - 40000000;
-    dirs.into_iter().map(|dir| dir.total_size).filter(|size| *size >= space_needed_to_free).min().unwrap()
+    dirs.into_iter()
+        .map(|dir| dir.total_size)
+        .filter(|size| *size >= space_needed_to_free)
+        .min()
+        .unwrap()
 }
 
 #[cfg(test)]
