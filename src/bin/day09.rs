@@ -1,9 +1,9 @@
-use itertools::Itertools;
 use std::{
     fs::File,
     io::{BufRead, BufReader, Result},
+    ops::{AddAssign, Neg},
     path::Path,
-    str::FromStr, ops::{AddAssign, Neg},
+    str::FromStr,
 };
 
 const INPUT_FILE: &str = concat!("./data/", env!("CARGO_BIN_NAME"), ".txt");
@@ -19,7 +19,7 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-#[derive(Debug, Clone, Eq, Ord, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, Eq, Ord, PartialEq, PartialOrd, Default)]
 struct Coord {
     x: i32,
     y: i32,
@@ -31,14 +31,20 @@ impl Coord {
     }
 
     fn signum(&self) -> Coord {
-        Coord { x: self.x.signum(), y: self.y.signum() }
+        Coord {
+            x: self.x.signum(),
+            y: self.y.signum(),
+        }
     }
 }
 
 impl Neg for Coord {
     type Output = Self;
     fn neg(self) -> Self {
-        Coord { x: -self.x, y: -self.y }
+        Coord {
+            x: -self.x,
+            y: -self.y,
+        }
     }
 }
 
@@ -50,12 +56,21 @@ impl AddAssign<&Coord> for Coord {
 }
 
 fn problem1_solution(input: &Vec<String>) -> usize {
-    let mut tail: Coord = Coord::new(0, 0);
+    solve::<2>(input)
+}
+
+fn problem2_solution(input: &Vec<String>) -> usize {
+    solve::<10>(input)
+}
+
+fn solve<const N: usize>(input: &Vec<String>) -> usize
+where
+    [Coord; N]: Default,
+{
     let mut tail_visits: Vec<Coord> = Vec::new();
-    let mut head_offset: Coord = Coord::new(0, 0);
+    let mut offsets: [Coord; N] = Default::default();
     for line in input {
-        let line_bytes = line.as_bytes();
-        let direction = &match line_bytes[0] {
+        let direction = &match line.as_bytes()[0] {
             b'L' => Coord::new(-1, 0),
             b'R' => Coord::new(1, 0),
             b'U' => Coord::new(0, 1),
@@ -63,27 +78,21 @@ fn problem1_solution(input: &Vec<String>) -> usize {
         };
         let count = usize::from_str(&line[2..]).unwrap();
         for _ in 0..count {
-            head_offset += direction;
-            if head_offset.x.abs().max(head_offset.y.abs()) > 1 {
-                let signum = head_offset.signum();
-                tail += &signum;
-                head_offset += &-signum;
+            offsets[0] += direction;
+            for i in 0..(N - 1) {
+                let upstream_offset = &offsets[i];
+                if upstream_offset.x.abs().max(upstream_offset.y.abs()) > 1 {
+                    let signum = upstream_offset.signum();
+                    offsets[i + 1] += &signum;
+                    offsets[i] += &-signum;
+                }
             }
-            tail_visits.push(tail.clone());
+            tail_visits.push(offsets[N - 1].clone());
         }
     }
     tail_visits.sort_unstable();
     tail_visits.dedup();
     tail_visits.len()
-}
-
-fn problem2_solution(input: &Vec<String>) -> usize {
-    input
-        .into_iter()
-        .dedup_with_count()
-        .map(|tuple| tuple.0)
-        .max()
-        .unwrap()
 }
 
 #[cfg(test)]
