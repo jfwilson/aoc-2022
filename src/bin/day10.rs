@@ -55,18 +55,10 @@ fn problem2_solution(input: &Vec<String>) -> String {
                 .map(|v| i32::from_str(v).unwrap())
         })
         .scan((0, 1), |(cycle, x), v| {
-            let char0 = if i32::abs((*cycle % 40) - *x) <= 1 {
-                '#'
-            } else {
-                '.'
-            };
+            let char0 = pixel_output(*cycle, *x);
             match v {
                 Some(v) => {
-                    let char1 = if i32::abs((*cycle + 1) % 40 - *x) <= 1 {
-                        '#'
-                    } else {
-                        '.'
-                    };
+                    let char1 = pixel_output(*cycle + 1, *x);
                     *x += v;
                     *cycle += 2;
                     Some([char0, char1])
@@ -83,6 +75,14 @@ fn problem2_solution(input: &Vec<String>) -> String {
         .into_iter()
         .flat_map(|row| row.chain("\n".chars()))
         .collect()
+}
+
+fn pixel_output(cycle: i32, x: i32) -> char {
+    if i32::abs((cycle % 40) - x) <= 1 {
+        '#'
+    } else {
+        '.'
+    }
 }
 
 #[cfg(test)]
