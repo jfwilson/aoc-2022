@@ -93,7 +93,7 @@ fn new_reachable_cells(
     x: usize,
     y: usize,
 ) -> [Option<(usize, usize)>; 4] {
-    let from_height = heights[y][x];
+    let max_height = heights[y][x] + 1;
     [
         (((x + 1)..heights[0].len()).next(), Some(y)),
         (x.checked_sub(1), Some(y)),
@@ -101,9 +101,8 @@ fn new_reachable_cells(
         (Some(x), y.checked_sub(1)),
     ]
     .map(|(n_x, n_y)| {
-        n_x.zip(n_y).filter(|(x, y)| {
-            (heights[*y][*x] <= from_height + 1) && visited_cells[*y][*x].is_none()
-        })
+        n_x.zip(n_y)
+            .filter(|&(x, y)| heights[y][x] <= max_height && visited_cells[y][x].is_none())
     })
 }
 
