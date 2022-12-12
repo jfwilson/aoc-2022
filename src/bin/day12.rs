@@ -1,5 +1,6 @@
 use itertools::Itertools;
 use std::{
+    convert::identity,
     fs::File,
     io::{BufRead, BufReader, Result},
     path::Path,
@@ -24,7 +25,7 @@ fn problem1_solution(input: &Vec<String>) -> usize {
 
 fn problem2_solution(input: &Vec<String>) -> usize {
     let starting_points = input
-        .into_iter()
+        .iter()
         .enumerate()
         .flat_map(|(y, row)| {
             row.chars()
@@ -37,11 +38,37 @@ fn problem2_solution(input: &Vec<String>) -> usize {
 }
 
 fn solve(input: &Vec<String>, mut starting_points: Vec<(usize, usize)>) -> usize {
-    let heights = &input
-        .into_iter()
+    let heights = &parse_cell_heights(input);
+    let (end_x, end_y) = locate_cell(input, 'E');
+    let mut visited_cells: Vec<Vec<Option<usize>>> = heights
+        .iter()
+        .map(|v| v.iter().map(|_| None).collect_vec())
+        .collect_vec();
+    (usize::MIN..)
+        .find_map(|steps_taken| {
+            let mut next_points: Vec<(usize, usize)> = starting_points
+                .iter()
+                .copied()
+                .flat_map(|(x, y)| {
+                    visited_cells[y][x] = Some(steps_taken);
+                    new_reachable_cells(heights, &visited_cells, x, y)
+                })
+                .filter_map(identity)
+                .collect();
+            next_points.sort();
+            next_points.dedup();
+            starting_points.clone_from(&next_points);
+            visited_cells[end_y][end_x]
+        })
+        .unwrap()
+}
+
+fn parse_cell_heights(input: &Vec<String>) -> Vec<Vec<u8>> {
+    input
+        .iter()
         .map(|line| {
             line.as_bytes()
-                .into_iter()
+                .iter()
                 .map(|b| match b {
                     b'S' => 0,
                     b'E' => b'z' - b'a',
@@ -49,70 +76,35 @@ fn solve(input: &Vec<String>, mut starting_points: Vec<(usize, usize)>) -> usize
                 })
                 .collect_vec()
         })
-        .collect_vec();
-    let height = heights.len();
-    let width = heights.into_iter().map(|hs| hs.len()).max().unwrap();
-    let (end_x, end_y) = locate_cell(input, 'E');
-    let mut distances: Vec<Vec<Option<usize>>> = heights
-        .into_iter()
-        .map(|v| v.into_iter().map(|_| None).collect_vec())
-        .collect_vec();
-    let mut distance: usize = 0;
-    while distances[end_y][end_x].is_none() && distance < 2000 {
-        let mut next_points: Vec<(usize, usize)> = (&starting_points)
-            .into_iter()
-            .copied()
-            .flat_map(|(x, y)| {
-                distances[y][x] = Some(distance);
-                let h = heights[y][x];
-                [
-                    visit_cell(
-                        heights,
-                        &distances,
-                        h,
-                        x.checked_add(1).filter(|x| *x < width),
-                        Some(y),
-                    ),
-                    visit_cell(heights, &distances, h, x.checked_sub(1), Some(y)),
-                    visit_cell(
-                        heights,
-                        &distances,
-                        h,
-                        Some(x),
-                        y.checked_add(1).filter(|y| *y < height),
-                    ),
-                    visit_cell(heights, &distances, h, Some(x), y.checked_sub(1)),
-                ]
-            })
-            .filter_map(|cell| cell)
-            .collect();
-        next_points.sort();
-        next_points.dedup();
-        starting_points.clear();
-        starting_points.extend(&next_points);
-        distance += 1;
-    }
-    distances[end_y][end_x].unwrap()
+        .collect_vec()
 }
 
 fn locate_cell(input: &Vec<String>, cell: char) -> (usize, usize) {
-    let (end_y, end_line) = input
-        .into_iter()
+    input
+        .iter()
         .find_position(|line| line.contains(cell))
-        .unwrap();
-    let end_x = end_line.chars().position(|c| c == cell).unwrap();
-    (end_x, end_y)
+        .and_then(|(y, row)| row.chars().position(|c| c == cell).map(|x| (x, y)))
+        .unwrap()
 }
 
-fn visit_cell(
+fn new_reachable_cells(
     heights: &Vec<Vec<u8>>,
-    distances: &Vec<Vec<Option<usize>>>,
-    height: u8,
-    x: Option<usize>,
-    y: Option<usize>,
-) -> Option<(usize, usize)> {
-    x.zip(y)
-        .filter(|(x, y)| (heights[*y][*x] <= height + 1) && distances[*y][*x].is_none())
+    visited_cells: &Vec<Vec<Option<usize>>>,
+    x: usize,
+    y: usize,
+) -> [Option<(usize, usize)>; 4] {
+    let from_height = heights[y][x];
+    [
+        (((x + 1)..heights[0].len()).next(), Some(y)),
+        (x.checked_sub(1), Some(y)),
+        (Some(x), ((y + 1)..heights.len()).next()),
+        (Some(x), y.checked_sub(1)),
+    ]
+    .map(|(n_x, n_y)| {
+        n_x.zip(n_y).filter(|(x, y)| {
+            (heights[*y][*x] <= from_height + 1) && visited_cells[*y][*x].is_none()
+        })
+    })
 }
 
 #[cfg(test)]
