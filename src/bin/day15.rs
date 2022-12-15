@@ -1,9 +1,10 @@
 use itertools::Itertools;
 use std::{
+    collections::BTreeMap,
     fs::File,
     io::{BufRead, BufReader, Result},
     path::Path,
-    str::FromStr, collections::BTreeMap,
+    str::FromStr,
 };
 
 const INPUT_FILE: &str = concat!("./data/", env!("CARGO_BIN_NAME"), ".txt");
@@ -15,32 +16,60 @@ fn main() -> Result<()> {
         .collect::<Result<Vec<String>>>()?;
 
     println!("problem1 = {}", problem1_solution(&lines, 2000000));
-    println!("problem2 = {}", problem2_solution(&lines));
+    println!("problem2 = {}", problem2_solution(&lines, 4000000));
     Ok(())
 }
 
 fn problem1_solution(input: &Vec<String>, y: i32) -> usize {
     let mut occupied: BTreeMap<i32, bool> = BTreeMap::new();
     for line in input {
-        for (sx, sy, bx, by) in line.split(&['=', ',', ':']).filter_map(|s| i32::from_str(s).ok()).collect_tuple() {
+        let (sx, sy, bx, by) = parse_sensor(line);
         let distance = (bx - sx).abs() + (by - sy).abs();
         println!("{:?}: {:?}: {}", (sx, sy), (bx, by), distance);
         let dx = distance - (y - sy).abs();
-            for x in (sx - dx)..=(sx + dx) {
-                let is_beacon = *occupied.get(&x).unwrap_or(&false) || (x == bx && y == by);
-                occupied.insert(x, is_beacon);
-            }
+        for x in (sx - dx)..=(sx + dx) {
+            let is_beacon = *occupied.get(&x).unwrap_or(&false) || (x == bx && y == by);
+            occupied.insert(x, is_beacon);
         }
     }
     occupied.values().filter(|is_beacon| !**is_beacon).count()
 }
 
-fn problem2_solution(input: &Vec<String>) -> usize {
-    input
-        .into_iter()
-        .dedup_with_count()
-        .map(|tuple| tuple.0)
-        .max()
+fn problem2_solution(input: &Vec<String>, count: i32) -> i64 {
+    let sensors = &input
+        .iter()
+        .map(|line| {
+            let (sx, sy, bx, by) = parse_sensor(line);
+            let distance = (bx - sx).abs() + (by - sy).abs();
+            (sx, sy, distance)
+        })
+        .collect_vec();
+
+    'row: for y in 0..=count {
+        let mut x: i32 = 0;
+        'col: while x <= count {
+            for (sx, sy, d) in sensors {
+                let dx = d - (y - sy).abs();
+                if (x - sx).abs() <= dx {
+                    if (sx + dx) >= count {
+                        continue 'row;
+                    } else {
+                        x = sx + dx + 1;
+                        continue 'col;
+                    }
+                }
+            }
+            println!("{}, {}", x, y);
+            return i64::from(x) * 4000000 + i64::from(y);
+        }
+    }
+    0
+}
+
+fn parse_sensor(line: &String) -> (i32, i32, i32, i32) {
+    line.split(&['=', ',', ':'])
+        .filter_map(|s| i32::from_str(s).ok())
+        .collect_tuple()
         .unwrap()
 }
 
@@ -76,8 +105,7 @@ Sensor at x=20, y=1: closest beacon is at x=15, y=3";
 
     #[test]
     fn problem2() {
-        let answer = problem2_solution(&load_test_data());
-
-        assert_eq!(answer, 3);
+        let answer = problem2_solution(&load_test_data(), 20);
+        assert_eq!(answer, 56000011);
     }
 }
