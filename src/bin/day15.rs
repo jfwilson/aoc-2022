@@ -1,0 +1,83 @@
+use itertools::Itertools;
+use std::{
+    fs::File,
+    io::{BufRead, BufReader, Result},
+    path::Path,
+    str::FromStr, collections::BTreeMap,
+};
+
+const INPUT_FILE: &str = concat!("./data/", env!("CARGO_BIN_NAME"), ".txt");
+
+fn main() -> Result<()> {
+    let input_file = File::open(Path::new(INPUT_FILE))?;
+    let lines: Vec<String> = BufReader::new(input_file)
+        .lines()
+        .collect::<Result<Vec<String>>>()?;
+
+    println!("problem1 = {}", problem1_solution(&lines, 2000000));
+    println!("problem2 = {}", problem2_solution(&lines));
+    Ok(())
+}
+
+fn problem1_solution(input: &Vec<String>, y: i32) -> usize {
+    let mut occupied: BTreeMap<i32, bool> = BTreeMap::new();
+    for line in input {
+        for (sx, sy, bx, by) in line.split(&['=', ',', ':']).filter_map(|s| i32::from_str(s).ok()).collect_tuple() {
+        let distance = (bx - sx).abs() + (by - sy).abs();
+        println!("{:?}: {:?}: {}", (sx, sy), (bx, by), distance);
+        let dx = distance - (y - sy).abs();
+            for x in (sx - dx)..=(sx + dx) {
+                let is_beacon = *occupied.get(&x).unwrap_or(&false) || (x == bx && y == by);
+                occupied.insert(x, is_beacon);
+            }
+        }
+    }
+    occupied.values().filter(|is_beacon| !**is_beacon).count()
+}
+
+fn problem2_solution(input: &Vec<String>) -> usize {
+    input
+        .into_iter()
+        .dedup_with_count()
+        .map(|tuple| tuple.0)
+        .max()
+        .unwrap()
+}
+
+#[cfg(test)]
+mod tests {
+
+    use super::*;
+
+    const INPUT: &'static str = "Sensor at x=2, y=18: closest beacon is at x=-2, y=15
+Sensor at x=9, y=16: closest beacon is at x=10, y=16
+Sensor at x=13, y=2: closest beacon is at x=15, y=3
+Sensor at x=12, y=14: closest beacon is at x=10, y=16
+Sensor at x=10, y=20: closest beacon is at x=10, y=16
+Sensor at x=14, y=17: closest beacon is at x=10, y=16
+Sensor at x=8, y=7: closest beacon is at x=2, y=10
+Sensor at x=2, y=0: closest beacon is at x=2, y=10
+Sensor at x=0, y=11: closest beacon is at x=2, y=10
+Sensor at x=20, y=14: closest beacon is at x=25, y=17
+Sensor at x=17, y=20: closest beacon is at x=21, y=22
+Sensor at x=16, y=7: closest beacon is at x=15, y=3
+Sensor at x=14, y=3: closest beacon is at x=15, y=3
+Sensor at x=20, y=1: closest beacon is at x=15, y=3";
+
+    fn load_test_data() -> Vec<String> {
+        INPUT.lines().map(|s| s.to_owned()).collect()
+    }
+
+    #[test]
+    fn problem1() {
+        let answer = problem1_solution(&load_test_data(), 10);
+        assert_eq!(answer, 26);
+    }
+
+    #[test]
+    fn problem2() {
+        let answer = problem2_solution(&load_test_data());
+
+        assert_eq!(answer, 3);
+    }
+}
