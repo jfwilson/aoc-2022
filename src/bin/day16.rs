@@ -56,154 +56,88 @@ fn valve_name_to_id(valve_names: &Vec<&str>, name: &str) -> usize {
     valve_names.iter().position(|&s| s == name).unwrap()
 }
 
-fn calc_score(valves: &Vec<Valve>, moves: &[Move]) -> usize {
-    moves
-        .iter()
-        .fold((0, 0, &valves[0]), |(mut acc, mut rate, mut valve), m| {
-            acc += rate;
-            match m {
-                Move::Open => rate += valve.rate,
-                Move::MoveTo(id) => valve = &valves[*id],
-            }
-            (acc, rate, valve)
-        })
-        .0
-}
-
 fn problem1_solution(input: &Vec<String>) -> usize {
     let valves = parse_valves(input);
     println!("{:?}", valves);
 
     println!("From {:?}, I can go to:", &valves[0]);
     for &tunnel in valves[0].tunnels.iter() {
-        println!(
-            "  {} = {:?}: {}",
-            tunnel,
-            &valves[tunnel],
-            calc_available_rate2(&valves, tunnel, valves[0].mask, 0)
-        );
+        println!("  {} = {:?}", tunnel, &valves[tunnel]);
     }
-    let mut best_sequence = [Move::Open; 30];
-    let mut best_sequence_score: usize = 0;
-    let mut moves: Vec<Move> = Vec::with_capacity(30);
 
-    search_moves(
-        &valves,
-        &mut moves,
-        0,
-        0,
-        &mut best_sequence,
-        &mut best_sequence_score,
-        0,
-    );
+    let mut p1 = Problem1Solver {
+        valves: &valves,
+        best_sequence: [Move::Open; 30],
+        best_sequence_score: 0,
+        moves: Vec::with_capacity(30),
+    };
 
-    best_sequence_score
+    p1.search_moves(0, 0, 0, 0);
+
+    p1.best_sequence_score
 }
 
-fn search_moves(
-    valves: &Vec<Valve>,
-    moves: &mut Vec<Move>,
-    open_valves: usize,
-    id: usize,
-    best_sequence: &mut [Move; 30],
-    best_sequence_score: &mut usize,
-    mut dont_go_back_to: usize,
-) {
-    let valve = &valves[id];
-    if (valve.rate > 0) && (open_valves & valve.mask) == 0 {
-        dont_go_back_to = valve.mask;
-        moves.push(Move::Open);
-        if moves.len() == 30 {
-            let score = calc_score(valves, moves);
-            if score > *best_sequence_score {
-                *best_sequence_score = score;
-                best_sequence.clone_from_slice(&moves[0..]);
+struct Problem1Solver<'a, const TIME: usize> {
+    valves: &'a Vec<Valve>,
+    moves: Vec<Move>,
+    best_sequence: [Move; TIME],
+    best_sequence_score: usize,
+}
 
-                println!("New best: {:?} = {}", best_sequence, best_sequence_score);
-            }
-        } else {
-            search_moves(
-                valves,
-                moves,
-                open_valves | valve.mask,
-                id,
-                best_sequence,
-                best_sequence_score,
-                dont_go_back_to,
-            );
-        }
-        moves.pop();
-    } else {
-        dont_go_back_to |= valve.mask;
-    }
-    for next in valve
-        .tunnels
-        .iter()
-        .filter(|&nid| (dont_go_back_to & (1usize << nid)) == 0)
-    {
-        if calc_available_rate2(valves, *next, dont_go_back_to, open_valves) > 0 {
-            moves.push(Move::MoveTo(*next));
-            if moves.len() == 30 {
-                let score = calc_score(valves, moves);
-                if score > *best_sequence_score {
-                    *best_sequence_score = score;
-                    best_sequence.clone_from_slice(&moves[0..]);
+impl<'a, const TIME: usize> Problem1Solver<'a, TIME> {
+    fn search_moves(
+        &mut self,
+        id: usize,
+        open_valves: usize,
+        dont_go_back_to: usize,
+        score_lower_bound: usize,
+    ) {
+        if self.moves.len() == TIME {
+            if score_lower_bound > self.best_sequence_score {
+                self.best_sequence_score = score_lower_bound;
+                self.best_sequence.clone_from_slice(&self.moves[0..]);
 
-                    println!("New best: {:?} = {}", best_sequence, best_sequence_score);
-                }
-            } else {
-                search_moves(
-                    valves,
-                    moves,
-                    open_valves,
-                    *next,
-                    best_sequence,
-                    best_sequence_score,
-                    dont_go_back_to,
+                println!(
+                    "New best: {:?} = {}",
+                    self.best_sequence, self.best_sequence_score
                 );
             }
-            moves.pop();
+        } else {
+            // stay still
+            if score_lower_bound > self.best_sequence_score {
+                self.best_sequence_score = score_lower_bound;
+                self.best_sequence = [Move::MoveTo(id); TIME];
+                self.best_sequence[0..self.moves.len()].clone_from_slice(&self.moves[0..]);
+
+                println!(
+                    "New best: {:?} = {}",
+                    self.best_sequence, self.best_sequence_score
+                );
+            }
+            // open valve (if rate > 0 and not already open)
+            let Valve { mask, rate, .. } = &self.valves[id];
+            if (*rate > 0) && (open_valves & mask) == 0 {
+                self.moves.push(Move::Open);
+                self.search_moves(
+                    id,
+                    open_valves | mask,
+                    *mask,
+                    score_lower_bound + rate * (TIME - self.moves.len()),
+                );
+                self.moves.pop();
+            }
+            // search tunnels (that we haven't just come from)
+            let new_dont_go_back_to = dont_go_back_to | mask;
+            for next in self.valves[id].tunnels.iter() {
+                let nmask = 1usize << next;
+                if (new_dont_go_back_to & nmask) == 0 {
+                    self.moves.push(Move::MoveTo(*next));
+                    self.search_moves(*next, open_valves, new_dont_go_back_to, score_lower_bound);
+                    self.moves.pop();
+                }
+            }
         }
     }
-    let mut stay_still: [Move; 30] = [Move::MoveTo(id); 30];
-    stay_still[0..moves.len()].copy_from_slice(&moves[0..]);
-    let score = calc_score(valves, &stay_still);
-    if score > *best_sequence_score {
-        *best_sequence_score = score;
-        *best_sequence = stay_still;
-
-        println!("New best: {:?} = {}", best_sequence, best_sequence_score);
-    }
-}
-
-fn calc_available_rate(
-    valves: &Vec<Valve>,
-    from_id: usize,
-    visited_bitmap: &mut usize,
-    open_bitmap: usize,
-    acc: &mut usize,
-) {
-    let valve = &valves[from_id];
-    if (*visited_bitmap & valve.mask) == 0 {
-        *visited_bitmap |= valve.mask;
-        if (open_bitmap & valve.mask) == 0 {
-            *acc += valve.rate;
-        }
-        for next_id in valve.tunnels.iter() {
-            calc_available_rate(valves, *next_id, visited_bitmap, open_bitmap, acc);
-        }
-    }
-}
-
-fn calc_available_rate2(
-    valves: &Vec<Valve>,
-    from_id: usize,
-    mut visited_bitmap: usize,
-    open_bitmap: usize,
-) -> usize {
-    let mut acc = 0;
-    calc_available_rate(valves, from_id, &mut visited_bitmap, open_bitmap, &mut acc);
-    acc
 }
 
 fn parse_valves(input: &Vec<String>) -> Vec<Valve> {
@@ -247,16 +181,6 @@ Valve JJ has flow rate=21; tunnel leads to valve II";
     fn problem1() {
         let answer = problem1_solution(&load_test_data());
         assert_eq!(answer, 1651);
-    }
-
-    #[test]
-    fn test_score() {
-        let valves = parse_valves(&load_test_data());
-        let answer = calc_score(
-            &valves,
-            &vec![Move::MoveTo(1), Move::Open, Move::MoveTo(0), Move::Open],
-        );
-        assert_eq!(answer, 26);
     }
 
     #[test]
