@@ -10,10 +10,9 @@ const INPUT_FILE: &str = concat!("./data/", env!("CARGO_BIN_NAME"), ".txt");
 
 fn main() -> Result<()> {
     let input_file = File::open(Path::new(INPUT_FILE))?;
-    let mut lines: Vec<String> = BufReader::new(input_file)
+    let lines: Vec<String> = BufReader::new(input_file)
         .lines()
         .collect::<Result<Vec<String>>>()?;
-    lines.sort();
 
     println!("problem1 = {}", problem1_solution(&lines));
     println!("problem2 = {}", problem2_solution(&lines));
@@ -57,7 +56,7 @@ fn valve_name_to_id(valve_names: &Vec<&str>, name: &str) -> usize {
 }
 
 fn problem1_solution(input: &Vec<String>) -> usize {
-    let valves = parse_valves(input);
+    let (start_at, valves) = parse_valves(input);
     println!("{:?}", valves);
 
     println!("From {:?}, I can go to:", &valves[0]);
@@ -67,85 +66,80 @@ fn problem1_solution(input: &Vec<String>) -> usize {
 
     let mut p1 = Problem1Solver {
         valves: &valves,
-        best_sequence: [Move::Open; 30],
-        best_sequence_score: 0,
         moves: Vec::with_capacity(30),
     };
 
-    p1.search_moves(0, 0, 0, 0);
+    let (best_sequence_score, best_sequence) = p1.search_moves::<30>(start_at, 0, 0, 0);
 
-    p1.best_sequence_score
+    println!("{}: {:?}", best_sequence_score, best_sequence);
+    best_sequence_score
 }
 
-struct Problem1Solver<'a, const TIME: usize> {
+struct Problem1Solver<'a> {
     valves: &'a Vec<Valve>,
     moves: Vec<Move>,
-    best_sequence: [Move; TIME],
-    best_sequence_score: usize,
 }
 
-impl<'a, const TIME: usize> Problem1Solver<'a, TIME> {
-    fn search_moves(
+impl<'a> Problem1Solver<'a> {
+    fn search_moves<const TIME: usize>(
         &mut self,
         id: usize,
         open_valves: usize,
         dont_go_back_to: usize,
         score_lower_bound: usize,
-    ) {
-        if self.moves.len() == TIME {
-            if score_lower_bound > self.best_sequence_score {
-                self.best_sequence_score = score_lower_bound;
-                self.best_sequence.clone_from_slice(&self.moves[0..]);
-
-                println!(
-                    "New best: {:?} = {}",
-                    self.best_sequence, self.best_sequence_score
-                );
-            }
-        } else {
-            // stay still
-            if score_lower_bound > self.best_sequence_score {
-                self.best_sequence_score = score_lower_bound;
-                self.best_sequence = [Move::MoveTo(id); TIME];
-                self.best_sequence[0..self.moves.len()].clone_from_slice(&self.moves[0..]);
-
-                println!(
-                    "New best: {:?} = {}",
-                    self.best_sequence, self.best_sequence_score
-                );
-            }
+    ) -> (usize, [Move; TIME]) {
+        // stay still
+        let mut result = (score_lower_bound, [Move::MoveTo(id); TIME]);
+        let t = self.moves.len();
+        result.1[0..t].copy_from_slice(&self.moves[0..]);
+        let t_remaining_after_move = TIME - t - 1;
+        if t_remaining_after_move > 0 {
             // open valve (if rate > 0 and not already open)
-            let Valve { mask, rate, .. } = &self.valves[id];
-            if (*rate > 0) && (open_valves & mask) == 0 {
+            let valve = &self.valves[id];
+            if (valve.rate > 0) && (open_valves & valve.mask) == 0 {
                 self.moves.push(Move::Open);
-                self.search_moves(
+                let open_valve_result = self.search_moves(
                     id,
-                    open_valves | mask,
-                    *mask,
-                    score_lower_bound + rate * (TIME - self.moves.len()),
+                    open_valves | valve.mask,
+                    valve.mask,
+                    score_lower_bound + valve.rate * t_remaining_after_move,
                 );
                 self.moves.pop();
+                if open_valve_result.0 > result.0 {
+                    result = open_valve_result;
+                }
             }
             // search tunnels (that we haven't just come from)
-            let new_dont_go_back_to = dont_go_back_to | mask;
-            for next in self.valves[id].tunnels.iter() {
-                let nmask = 1usize << next;
-                if (new_dont_go_back_to & nmask) == 0 {
+            let new_dont_go_back_to = dont_go_back_to | valve.mask;
+            for next in valve.tunnels.iter() {
+                if (new_dont_go_back_to & (1usize << next)) == 0 {
                     self.moves.push(Move::MoveTo(*next));
-                    self.search_moves(*next, open_valves, new_dont_go_back_to, score_lower_bound);
+                    let move_result = self.search_moves(
+                        *next,
+                        open_valves,
+                        new_dont_go_back_to,
+                        score_lower_bound,
+                    );
                     self.moves.pop();
+                    if move_result.0 > result.0 {
+                        result = move_result;
+                    }
                 }
             }
         }
+        result
     }
 }
 
-fn parse_valves(input: &Vec<String>) -> Vec<Valve> {
+fn parse_valves(input: &Vec<String>) -> (usize, Vec<Valve>) {
     let valve_names = input.iter().map(|s| &s[6..8]).collect_vec();
-    input
-        .iter()
-        .map(|s| Valve::parse(s, &valve_names))
-        .collect_vec()
+    (
+        valve_names.iter().position(|&s| s == "AA").unwrap(),
+        input
+            .iter()
+            .map(|s| Valve::parse(s, &valve_names))
+            .collect_vec(),
+    )
 }
 
 fn problem2_solution(input: &Vec<String>) -> usize {
