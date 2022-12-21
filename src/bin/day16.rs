@@ -3,7 +3,7 @@ use std::{
     fs::File,
     io::{BufRead, BufReader, Result},
     path::Path,
-    str::FromStr,
+    str::FromStr, collections::HashMap, mem::swap,
 };
 
 const INPUT_FILE: &str = concat!("./data/", env!("CARGO_BIN_NAME"), ".txt");
@@ -75,6 +75,71 @@ fn problem1_solution(input: &Vec<String>) -> usize {
     best_sequence_score
 }
 
+#[derive(Debug, Eq, PartialEq, Clone, Copy, Hash)]
+struct Key {
+    location: usize,
+    unopened: usize,
+}
+
+impl Key {
+    const fn new(indices: [usize; 2], unopened: usize) -> Key {
+        Key { location: (1usize << indices[0]) | (1usize << indices[1]), unopened }
+    }
+
+    fn indices(&self) -> [usize; 2] {
+        let idx0 = self.location.trailing_zeros() as usize;
+        let idx1 = (usize::BITS - 1 - self.location.leading_zeros()) as usize;
+        [idx0, idx1]
+    }
+}
+
+fn problem2_solution(input: &Vec<String>) -> usize {
+    let (start_at, valves) = parse_valves(input);
+    println!("{:?}", valves);
+
+    println!("From {:?}, I can go to:", &valves[0]);
+    for &tunnel in valves[0].tunnels.iter() {
+        println!("  {} = {:?}", tunnel, &valves[tunnel]);
+    }
+
+    let mut optimal_moves_to_current = HashMap::new();
+    let original_unopened_valves = valves.iter().positions(|v| v.rate > 0).fold(0, |acc, idx| acc | (1usize << idx));
+    optimal_moves_to_current.insert(Key::new([start_at, start_at], original_unopened_valves), 0usize);
+    let mut optimal_moves_to_next: HashMap<Key, usize> = HashMap::new();
+
+    let t_minus_one = 25;
+    for t in 0..t_minus_one {
+        let t_remaining = t_minus_one - t;
+        optimal_moves_to_next.clear();
+
+        println!("Contemplating options at t = {} (time remaining after move = {}, starting count {})", t, t_remaining, optimal_moves_to_current.len());
+        for (&k, &base_score) in optimal_moves_to_current.iter() {
+            let indices = k.indices();
+
+            // Consider the different moves
+            for &n0 in indices.iter().take(1).chain(valves[indices[0]].tunnels.iter()) {
+                // open valve if we are staying still
+                let mask0 = 1usize << n0;
+                let n0_unopened = if n0 == indices[0] { k.unopened & !mask0 } else { k.unopened };
+                let n0_score = base_score + if n0_unopened != k.unopened { valves[n0].rate * t_remaining } else { 0 };
+                for &n1 in indices.iter().skip(1).chain(valves[indices[1]].tunnels.iter()) {
+                    // again, open valve if we are staying still
+                    let mask1 = 1usize << n1;
+                    let n1_unopened = if n1 == indices[1] { n0_unopened & !mask1 } else { n0_unopened };
+                    let n1_score = n0_score + if n1_unopened != n0_unopened { valves[n1].rate * t_remaining } else { 0 };
+                    let nk = Key { location: mask0 | mask1, unopened: n1_unopened };
+                    optimal_moves_to_next.entry(nk).and_modify(|v| *v = (*v).max(n1_score)).or_insert(n1_score);
+                }
+            }
+        }
+        swap(&mut optimal_moves_to_current, &mut optimal_moves_to_next);
+    }
+
+    let best_sequence_score = *optimal_moves_to_current.values().max().unwrap();
+    println!("{}: {}", t_minus_one, best_sequence_score);
+    best_sequence_score
+}
+
 struct Problem1Solver<'a> {
     valves: &'a Vec<Valve>,
     moves: Vec<Move>,
@@ -142,15 +207,6 @@ fn parse_valves(input: &Vec<String>) -> (usize, Vec<Valve>) {
     )
 }
 
-fn problem2_solution(input: &Vec<String>) -> usize {
-    input
-        .into_iter()
-        .dedup_with_count()
-        .map(|tuple| tuple.0)
-        .max()
-        .unwrap()
-}
-
 #[cfg(test)]
 mod tests {
 
@@ -171,16 +227,16 @@ Valve JJ has flow rate=21; tunnel leads to valve II";
         INPUT.lines().map(|s| s.to_owned()).collect()
     }
 
-    #[test]
-    fn problem1() {
-        let answer = problem1_solution(&load_test_data());
-        assert_eq!(answer, 1651);
-    }
+    // #[test]
+    // fn problem1() {
+    //     let answer = problem1_solution(&load_test_data());
+    //     assert_eq!(answer, 1651);
+    // }
 
     #[test]
     fn problem2() {
         let answer = problem2_solution(&load_test_data());
 
-        assert_eq!(answer, 3);
+        assert_eq!(answer, 1707);
     }
 }
