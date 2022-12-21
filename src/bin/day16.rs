@@ -107,28 +107,24 @@ fn problem2_solution(input: &Vec<String>) -> usize {
     optimal_moves_to_current.insert(Key::new([start_at, start_at], original_unopened_valves), 0usize);
     let mut optimal_moves_to_next: HashMap<Key, usize> = HashMap::new();
 
+    let mut best_valve_rates = valves.iter().map(|v| v.rate).collect_vec();
+    best_valve_rates.sort();
+    best_valve_rates.reverse();
+
     let t_minus_one = 25;
     for t in 0..t_minus_one {
         let t_remaining = t_minus_one - t;
         optimal_moves_to_next.clear();
 
         println!("Contemplating options at t = {} (time remaining after move = {}, starting count {})", t, t_remaining, optimal_moves_to_current.len());
-        for (&k, &base_score) in optimal_moves_to_current.iter() {
-            let indices = k.indices();
+        remove_suboptimal::<2>(&mut optimal_moves_to_current, t_remaining, &best_valve_rates);
 
-            // Consider the different moves
-            for &n0 in indices.iter().take(1).chain(valves[indices[0]].tunnels.iter()) {
-                // open valve if we are staying still
-                let mask0 = 1usize << n0;
-                let n0_unopened = if n0 == indices[0] { k.unopened & !mask0 } else { k.unopened };
-                let n0_score = base_score + if n0_unopened != k.unopened { valves[n0].rate * t_remaining } else { 0 };
-                for &n1 in indices.iter().skip(1).chain(valves[indices[1]].tunnels.iter()) {
-                    // again, open valve if we are staying still
-                    let mask1 = 1usize << n1;
-                    let n1_unopened = if n1 == indices[1] { n0_unopened & !mask1 } else { n0_unopened };
-                    let n1_score = n0_score + if n1_unopened != n0_unopened { valves[n1].rate * t_remaining } else { 0 };
-                    let nk = Key { location: mask0 | mask1, unopened: n1_unopened };
-                    optimal_moves_to_next.entry(nk).and_modify(|v| *v = (*v).max(n1_score)).or_insert(n1_score);
+        for (&k, &base_score) in optimal_moves_to_current.iter() {
+            let [idx0, idx1] = k.indices();
+            for (mask0, unopened0, score0) in explore_from(idx0, t_remaining, &valves, 0, k.unopened, base_score) {
+                for (mask1, unopened1, score1) in explore_from(idx1, t_remaining, &valves, mask0, unopened0, score0) {
+                    let nk = Key { location: mask1, unopened: unopened1 };
+                    optimal_moves_to_next.entry(nk).and_modify(|v| *v = (*v).max(score1)).or_insert(score1);
                 }
             }
         }
@@ -138,6 +134,32 @@ fn problem2_solution(input: &Vec<String>) -> usize {
     let best_sequence_score = *optimal_moves_to_current.values().max().unwrap();
     println!("{}: {}", t_minus_one, best_sequence_score);
     best_sequence_score
+}
+
+fn score_move(from_idx: usize, from_rate: usize, t_remaining: usize, mask: usize, unopened: usize, score: usize, to_idx: usize) -> (usize, usize, usize) {
+    let mut result = (1usize << to_idx, unopened, score);
+    if to_idx == from_idx {
+        result.1 &= !result.0;
+        if result.1 != unopened {
+            result.2 += from_rate * t_remaining;
+        }
+    }
+    result.0 |= mask;
+    result
+}
+
+fn explore_from<'a>(from_idx: usize, t_remaining: usize, valves: &'a Vec<Valve>, mask: usize, unopened: usize, score: usize) -> Box<dyn Iterator<Item = (usize, usize, usize)> + 'a> {
+    let Valve { rate, tunnels, .. } = &valves[from_idx];
+    let from_rate = *rate;
+    Box::new(std::iter::once(from_idx).chain(tunnels.iter().copied()).map(move |to_idx| score_move(from_idx, from_rate, t_remaining, mask, unopened, score, to_idx)))
+}
+
+fn remove_suboptimal<const SIZE: usize>(optimal_moves_to_current: &mut HashMap<Key, usize>, t_remaining: usize, best_valve_rates: &Vec<usize>) {
+    let current_best = *optimal_moves_to_current.values().max().unwrap();
+    let max_addition: usize = (1..=t_remaining).rev().step_by(2).flat_map(|tt| [tt; SIZE]).zip(best_valve_rates).map(|(tt, r)| tt * r).sum();
+    println!("  Current best is {}, upper bound is {} (current best + {})", current_best, current_best + max_addition, max_addition);
+    optimal_moves_to_current.retain(|_, v| *v + max_addition >= current_best);
+    println!("  Drained suboptimal elements, count is now {}", optimal_moves_to_current.len());
 }
 
 struct Problem1Solver<'a> {
