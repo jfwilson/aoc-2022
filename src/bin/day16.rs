@@ -1,9 +1,11 @@
 use itertools::Itertools;
 use std::{
+    collections::HashMap,
     fs::File,
     io::{BufRead, BufReader, Result},
+    mem::swap,
     path::Path,
-    str::FromStr, collections::HashMap, mem::swap,
+    str::FromStr,
 };
 
 const INPUT_FILE: &str = concat!("./data/", env!("CARGO_BIN_NAME"), ".txt");
@@ -35,10 +37,7 @@ impl Valve {
             .step_by(2)
             .map(|name| valve_name_to_id(valve_names, name))
             .collect_vec();
-        Valve {
-            rate,
-            tunnels,
-        }
+        Valve { rate, tunnels }
     }
 }
 
@@ -59,39 +58,53 @@ fn solve<const NUM_ACTORS: usize>(input: &Vec<String>, t_minus_one: usize) -> us
     let valves_ref = &valves;
     println!("{:?}", valves);
 
-    println!("From {:?}, I can go to:", &valves[0]);
-    for &tunnel in valves[0].tunnels.iter() {
-        println!("  {} = {:?}", tunnel, &valves[tunnel]);
-    }
-
     let mut best_valve_rates = valves.iter().map(|v| v.rate).collect_vec();
     best_valve_rates.sort();
     best_valve_rates.reverse();
 
     let mut optimal_moves_to_current: HashMap<(usize, usize), usize> = HashMap::new();
     let mut optimal_moves_to_next: HashMap<(usize, usize), usize> = HashMap::new();
-    let original_unopened_valves = valves.iter().positions(|v| v.rate > 0).fold(0, |acc, idx| acc | (1usize << idx));
+    let original_unopened_valves = valves
+        .iter()
+        .positions(|v| v.rate > 0)
+        .fold(0, |acc, idx| acc | (1usize << idx));
     optimal_moves_to_current.insert((1usize << start_at, original_unopened_valves), 0usize);
 
     for t in 0..t_minus_one {
         let t_remaining = t_minus_one - t;
         optimal_moves_to_next.clear();
 
-        println!("Contemplating options at t = {} (time remaining after move = {}, starting count {})", t, t_remaining, optimal_moves_to_current.len());
-        remove_suboptimal::<2>(&mut optimal_moves_to_current, t_remaining, &best_valve_rates);
+        println!(
+            "Contemplating options at t = {} (time remaining after move = {}, starting count {})",
+            t,
+            t_remaining,
+            optimal_moves_to_current.len()
+        );
+        remove_suboptimal::<NUM_ACTORS>(
+            &mut optimal_moves_to_current,
+            t_remaining,
+            &best_valve_rates,
+        );
 
         for (&(pos, unopened), &score) in optimal_moves_to_current.iter() {
             let idx0 = pos.trailing_zeros() as usize;
-            let explore = if NUM_ACTORS == 1 {
+            let destinations = if NUM_ACTORS == 1 {
                 explore_from(idx0, t_remaining, valves_ref, 0, unopened, score)
             } else {
                 let idx1 = (usize::BITS - 1 - pos.leading_zeros()) as usize;
-                Box::new(explore_from(idx0, t_remaining, valves_ref, 0, unopened, score).flat_map(move |(mask, unopened, score)| {
-                    explore_from(idx1, t_remaining, valves_ref, mask, unopened, score)
-                }))
+                Box::new(
+                    explore_from(idx0, t_remaining, valves_ref, 0, unopened, score).flat_map(
+                        move |(mask, unopened, score)| {
+                            explore_from(idx1, t_remaining, valves_ref, mask, unopened, score)
+                        },
+                    ),
+                )
             };
-            for (mask, unopened, score) in explore {
-                optimal_moves_to_next.entry((mask, unopened)).and_modify(|v| *v = (*v).max(score)).or_insert(score);
+            for (mask, unopened, score) in destinations {
+                optimal_moves_to_next
+                    .entry((mask, unopened))
+                    .and_modify(|v| *v = (*v).max(score))
+                    .or_insert(score);
             }
         }
         swap(&mut optimal_moves_to_current, &mut optimal_moves_to_next);
@@ -102,30 +115,57 @@ fn solve<const NUM_ACTORS: usize>(input: &Vec<String>, t_minus_one: usize) -> us
     best_sequence_score
 }
 
-fn remove_suboptimal<const SIZE: usize>(optimal_moves_to_current: &mut HashMap<(usize, usize), usize>, t_remaining: usize, best_valve_rates: &Vec<usize>) {
+fn remove_suboptimal<const NUM_ACTORS: usize>(
+    optimal_moves_to_current: &mut HashMap<(usize, usize), usize>,
+    t_remaining: usize,
+    best_valve_rates: &Vec<usize>,
+) {
     let current_best = *optimal_moves_to_current.values().max().unwrap();
-    let max_addition: usize = (1..=t_remaining).rev().step_by(2).flat_map(|tt| [tt; SIZE]).zip(best_valve_rates).map(|(tt, r)| tt * r).sum();
-    println!("  Current best is {}, upper bound is {} (current best + {})", current_best, current_best + max_addition, max_addition);
+    let max_addition: usize = (1..=t_remaining)
+        .rev()
+        .step_by(2)
+        .flat_map(|tt| [tt; NUM_ACTORS])
+        .zip(best_valve_rates)
+        .map(|(tt, r)| tt * r)
+        .sum();
+    println!(
+        "  Current best is {}, upper bound is {} (current best + {})",
+        current_best,
+        current_best + max_addition,
+        max_addition
+    );
     optimal_moves_to_current.retain(|_, v| *v + max_addition >= current_best);
-    println!("  Drained suboptimal elements, count is now {}", optimal_moves_to_current.len());
+    println!(
+        "  Drained suboptimal elements, count is now {}",
+        optimal_moves_to_current.len()
+    );
 }
 
-fn explore_from<'a>(from_idx: usize, t_remaining: usize, valves: &'a Vec<Valve>, mask: usize, unopened: usize, score: usize) -> Box<dyn Iterator<Item = (usize, usize, usize)> + 'a> {
+fn explore_from<'a>(
+    from_idx: usize,
+    t_remaining: usize,
+    valves: &'a Vec<Valve>,
+    mask: usize,
+    unopened: usize,
+    score: usize,
+) -> Box<dyn Iterator<Item = (usize, usize, usize)> + 'a> {
     let Valve { rate, tunnels, .. } = &valves[from_idx];
-    let from_rate = *rate;
-    Box::new(std::iter::once(from_idx).chain(tunnels.iter().copied()).map(move |to_idx| score_move(from_idx, from_rate, t_remaining, mask, unopened, score, to_idx)))
-}
-
-fn score_move(from_idx: usize, from_rate: usize, t_remaining: usize, mask: usize, unopened: usize, score: usize, to_idx: usize) -> (usize, usize, usize) {
-    let mut result = (1usize << to_idx, unopened, score);
-    if to_idx == from_idx {
-        result.1 &= !result.0;
-        if result.1 != unopened {
-            result.2 += from_rate * t_remaining;
-        }
-    }
-    result.0 |= mask;
-    result
+    let open_bonus = rate * t_remaining;
+    Box::new(
+        std::iter::once(from_idx)
+            .chain(tunnels.iter().copied())
+            .map(move |to_idx| {
+                let mut result = (1usize << to_idx, unopened, score);
+                if to_idx == from_idx {
+                    result.1 &= !result.0;
+                    if result.1 != unopened {
+                        result.2 += open_bonus;
+                    }
+                }
+                result.0 |= mask;
+                result
+            }),
+    )
 }
 
 fn parse_valves(input: &Vec<String>) -> (usize, Vec<Valve>) {
