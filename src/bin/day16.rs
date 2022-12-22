@@ -3,6 +3,7 @@ use std::{
     collections::HashMap,
     fs::File,
     io::{BufRead, BufReader, Result},
+    iter::once,
     mem::swap,
     path::Path,
     str::FromStr,
@@ -46,16 +47,29 @@ fn valve_name_to_id(valve_names: &Vec<&str>, name: &str) -> usize {
 }
 
 fn problem1_solution(input: &Vec<String>) -> usize {
-    solve::<1>(input, 29)
+    solve(input, 29, |pos_bitset| {
+        [pos_bitset.trailing_zeros() as usize]
+    })
 }
 
 fn problem2_solution(input: &Vec<String>) -> usize {
-    solve::<2>(input, 25)
+    solve(input, 25, |pos_bitset| {
+        [
+            pos_bitset.trailing_zeros() as usize,
+            (63 - pos_bitset.leading_zeros()) as usize,
+        ]
+    })
 }
 
-fn solve<const NUM_ACTORS: usize>(input: &Vec<String>, t_minus_one: usize) -> usize {
+fn solve<const NUM_ACTORS: usize, F>(
+    input: &Vec<String>,
+    t_minus_one: usize,
+    expand_indices: F,
+) -> usize
+where
+    F: Fn(usize) -> [usize; NUM_ACTORS],
+{
     let (start_at, valves) = parse_valves(input);
-    let valves_ref = &valves;
     println!("{:?}", valves);
 
     let mut best_valve_rates = valves.iter().map(|v| v.rate).collect_vec();
@@ -86,23 +100,18 @@ fn solve<const NUM_ACTORS: usize>(input: &Vec<String>, t_minus_one: usize) -> us
             &best_valve_rates,
         );
 
-        for (&(pos, unopened), &score) in optimal_moves_to_current.iter() {
-            let idx0 = pos.trailing_zeros() as usize;
-            let destinations = if NUM_ACTORS == 1 {
-                explore_from(idx0, t_remaining, valves_ref, 0, unopened, score)
-            } else {
-                let idx1 = (usize::BITS - 1 - pos.leading_zeros()) as usize;
-                Box::new(
-                    explore_from(idx0, t_remaining, valves_ref, 0, unopened, score).flat_map(
-                        move |(mask, unopened, score)| {
-                            explore_from(idx1, t_remaining, valves_ref, mask, unopened, score)
-                        },
-                    ),
-                )
-            };
-            for (mask, unopened, score) in destinations {
+        for (&(pos_bitset, unopened), &score) in optimal_moves_to_current.iter() {
+            let actor_positions = expand_indices(pos_bitset);
+            let mut states: Box<dyn Iterator<Item = (usize, usize, usize)>> =
+                Box::new(once((0, unopened, score)));
+            for from_idx in actor_positions {
+                let valve = &valves[from_idx];
+                let open_bonus = valve.rate * t_remaining;
+                states = expand_search(from_idx, open_bonus, &valve.tunnels, states)
+            }
+            for (pos_bitset, unopened, score) in states {
                 optimal_moves_to_next
-                    .entry((mask, unopened))
+                    .entry((pos_bitset, unopened))
                     .and_modify(|v| *v = (*v).max(score))
                     .or_insert(score);
             }
@@ -141,30 +150,34 @@ fn remove_suboptimal<const NUM_ACTORS: usize>(
     );
 }
 
-fn explore_from<'a>(
+fn expand_search<'a, I>(
     from_idx: usize,
-    t_remaining: usize,
-    valves: &'a Vec<Valve>,
-    mask: usize,
-    unopened: usize,
-    score: usize,
-) -> Box<dyn Iterator<Item = (usize, usize, usize)> + 'a> {
-    let Valve { rate, tunnels, .. } = &valves[from_idx];
-    let open_bonus = rate * t_remaining;
+    open_bonus: usize,
+    tunnel_indices: &'a Vec<usize>,
+    states_so_far: I,
+) -> Box<dyn Iterator<Item = (usize, usize, usize)> + 'a>
+where
+    I: Iterator<Item = (usize, usize, usize)> + 'a,
+{
     Box::new(
-        std::iter::once(from_idx)
-            .chain(tunnels.iter().copied())
-            .map(move |to_idx| {
-                let mut result = (1usize << to_idx, unopened, score);
-                if to_idx == from_idx {
-                    result.1 &= !result.0;
-                    if result.1 != unopened {
-                        result.2 += open_bonus;
-                    }
-                }
-                result.0 |= mask;
-                result
-            }),
+        states_so_far.flat_map(move |(prev_bitset, prev_unopened, prev_score)| {
+            std::iter::once(from_idx)
+                .chain(tunnel_indices.iter().copied())
+                .map(move |to_idx| {
+                    let to_bitset = 1usize << to_idx;
+                    let new_unopened = if to_idx == from_idx {
+                        prev_unopened & !to_bitset
+                    } else {
+                        prev_unopened
+                    };
+                    let new_score = if prev_unopened != new_unopened {
+                        prev_score + open_bonus
+                    } else {
+                        prev_score
+                    };
+                    (prev_bitset | to_bitset, new_unopened, new_score)
+                })
+        }),
     )
 }
 
