@@ -20,38 +20,45 @@ fn main() -> Result<()> {
 
 const T: usize = 10;
 
+type Coord = (i32, i32);
+
+const OFFSETS: [[Coord; 3]; 4] = [
+    [(-1, -1), (0, -1), (1, -1)],
+    [(-1, 1), (0, 1), (1, 1)],
+    [(-1, -1), (-1, 0), (-1, 1)],
+    [(1, -1), (1, 0), (1, 1)],
+];
+
 fn problem1_solution(input: &Vec<String>) -> usize {
-    let mut elf_positions: Vec<Coord> = input
-        .iter()
-        .enumerate()
-        .flat_map(|(y, row)| {
-            row.chars()
-                .positions(|c| c == '#')
-                .map(move |x| (x as i32, y as i32))
-        })
-        .collect();
+    let mut elf_positions: Vec<Coord> = parse_input(input);
     for t in 0..T {
-        println!("{}:", t);
-        display(&elf_positions);
-        let mut proposed = intentions(&elf_positions, t);
-        let counts = proposed.iter().copied().counts();
-        for i in 0..proposed.len() {
-            if counts.get(&proposed[i]).copied().unwrap_or(0) > 1 {
-                proposed[i] = elf_positions[i];
-            }
-        }
-        elf_positions = proposed;
+        display(t, &elf_positions);
+        elf_positions = calc_next(&elf_positions, t);
     }
 
-    println!("{}:", T);
-    display(&elf_positions);
+    display(T, &elf_positions);
     let (bl, tr) = range(&elf_positions);
-    let area = ((tr.0 - bl.0 + 1) * (tr.1 - bl.1 + 1)) as usize;
-    area - elf_positions.len()
+    let area = (tr.0 - bl.0 + 1) * (tr.1 - bl.1 + 1);
+    area as usize - elf_positions.len()
 }
 
 fn problem2_solution(input: &Vec<String>) -> usize {
-    let mut elf_positions: Vec<Coord> = input
+    let mut elf_positions: Vec<Coord> = parse_input(input);
+    let mut t = 0;
+    let mut has_moved: bool = true;
+    while has_moved {
+        display(t, &elf_positions);
+        let next_positions = calc_next(&elf_positions, t);
+        has_moved = next_positions != elf_positions;
+        elf_positions = next_positions;
+        t += 1;
+    }
+    display(t, &elf_positions);
+    t
+}
+
+fn parse_input(input: &Vec<String>) -> Vec<Coord> {
+    input
         .iter()
         .enumerate()
         .flat_map(|(y, row)| {
@@ -59,26 +66,7 @@ fn problem2_solution(input: &Vec<String>) -> usize {
                 .positions(|c| c == '#')
                 .map(move |x| (x as i32, y as i32))
         })
-        .collect();
-    let mut t = 0;
-    let mut moved: bool = true;
-    while moved {
-        println!("{}:", t);
-        display(&elf_positions);
-        let mut proposed = intentions(&elf_positions, t);
-        let counts = proposed.iter().copied().counts();
-        for i in 0..proposed.len() {
-            if counts.get(&proposed[i]).copied().unwrap_or(0) > 1 {
-                proposed[i] = elf_positions[i];
-            }
-        }
-        moved = proposed != elf_positions;
-        elf_positions = proposed;
-        t += 1;
-    }
-    println!("{}:", t);
-    display(&elf_positions);
-    t
+        .collect()
 }
 
 fn range(elf_positions: &Vec<Coord>) -> (Coord, Coord) {
@@ -89,7 +77,8 @@ fn range(elf_positions: &Vec<Coord>) -> (Coord, Coord) {
     ((x0, y0), (x1, y1))
 }
 
-fn display(elf_positions: &Vec<Coord>) {
+fn display(t: usize, elf_positions: &Vec<Coord>) {
+    println!("{}:", t);
     let (bl, tr) = range(&elf_positions);
     for y in bl.1..=tr.1 {
         for x in bl.0..=tr.0 {
@@ -103,15 +92,6 @@ fn display(elf_positions: &Vec<Coord>) {
         println!("");
     }
 }
-
-type Coord = (i32, i32);
-
-const OFFSETS: [[Coord; 3]; 4] = [
-    [(-1, -1), (0, -1), (1, -1)],
-    [(-1, 1), (0, 1), (1, 1)],
-    [(-1, -1), (-1, 0), (-1, 1)],
-    [(1, -1), (1, 0), (1, 1)],
-];
 
 fn intentions(elf_positions: &Vec<Coord>, t: usize) -> Vec<Coord> {
     elf_positions
@@ -140,6 +120,17 @@ fn intentions(elf_positions: &Vec<Coord>, t: usize) -> Vec<Coord> {
             }
         })
         .collect_vec()
+}
+
+fn calc_next(elf_positions: &Vec<Coord>, t: usize) -> Vec<Coord> {
+    let mut proposed = intentions(elf_positions, t);
+    let counts = proposed.iter().copied().counts();
+    for i in 0..proposed.len() {
+        if counts.get(&proposed[i]).copied().unwrap_or(0) > 1 {
+            proposed[i] = elf_positions[i];
+        }
+    }
+    proposed
 }
 
 #[cfg(test)]
