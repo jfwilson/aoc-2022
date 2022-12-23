@@ -161,7 +161,7 @@ where
 {
     Box::new(
         states_so_far.flat_map(move |(prev_bitset, prev_unopened, prev_score)| {
-            std::iter::once(from_idx)
+            once(from_idx)
                 .chain(tunnel_indices.iter().copied())
                 .map(move |to_idx| {
                     let to_bitset = 1usize << to_idx;
@@ -170,7 +170,7 @@ where
                     } else {
                         prev_unopened
                     };
-                    let new_score = if prev_unopened != new_unopened {
+                    let new_score = if new_unopened != prev_unopened {
                         prev_score + open_bonus
                     } else {
                         prev_score
@@ -221,7 +221,6 @@ Valve JJ has flow rate=21; tunnel leads to valve II";
     #[test]
     fn problem2() {
         let answer = problem2_solution(&load_test_data());
-
         assert_eq!(answer, 1707);
     }
 }
