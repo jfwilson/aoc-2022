@@ -1,6 +1,14 @@
 #!/bin/zsh
 
-FILENAME="day$(date -j +'%d')"
+if [[ -z $1 ]] then
+  DATE=$(date -j +'%Y-%m-%d')
+else
+  DATE=$(date -j -f '%d' $1 +'%Y-%m-%d')
+fi
+
+echo "Checking date $DATE"
+
+FILENAME="day$(date -j -f '%Y-%m-%d' $DATE +'%d')"
 
 RS_FILE="src/bin/$FILENAME.rs"
 if [[ -f $RS_FILE ]]; then
@@ -18,5 +26,5 @@ elif [[ -z $AOC_COOKIE ]]; then
     touch $TXT_FILE
 else
     echo "downloading $TXT_FILE"
-    curl -H "cookie: $AOC_COOKIE" "https://adventofcode.com/$(date -j +'%Y')/day/$(date -j +'%-d')/input" -o $TXT_FILE
+    curl -H "cookie: $AOC_COOKIE" "https://adventofcode.com/$(date -j -f '%Y-%m-%d' $DATE +'%Y')/day/$(date -j -f '%Y-%m-%d' $DATE +'%-d')/input" -o $TXT_FILE
 fi
