@@ -1,5 +1,6 @@
 use itertools::Itertools;
 use std::{
+    collections::HashMap,
     fs::File,
     io::{BufRead, BufReader, Result},
     path::Path,
@@ -34,25 +35,35 @@ fn problem2_solution(input: &str) -> usize {
     solve(input, 1000000000000)
 }
 
-fn solve(input: &str, max_time: usize) -> usize {
+fn solve(input: &str, shape_count: usize) -> usize {
     let shifts = input.chars().map(|c| c == '>').collect_vec();
     let mut shift_index = 0;
     let mut filled: Vec<u8> = Vec::new();
-    for t in 0..max_time {
-        if false {
-            display(t, &filled);
-        }
-        let mut put_at = filled.iter().position(|&row| row == 0).unwrap_or(filled.len()) + 3;
-        let mut shape = SHAPES[t % 5];
+    let mut drop_heights: HashMap<([u8; 4], usize), (usize, usize)> = HashMap::new();
+    let mut shape_index = 0;
+    let mut cycle_height = 0;
+    while shape_index < shape_count {
+        let mut put_at = filled
+            .iter()
+            .position(|&row| row == 0)
+            .unwrap_or(filled.len())
+            + 3;
+        let mut shape = SHAPES[shape_index % 5];
         'place_shape: loop {
-            let shift_right = shifts[shift_index % shifts.len()];
-            shift_index += 1;
+            let shift_right = shifts[shift_index];
+            shift_index = (shift_index + 1) % shifts.len();
             // try to shift
-            if shift_right && shape.iter().all(|row| row.trailing_zeros() > 0) && no_collisions(shape, Shift::Right, &filled, put_at) {
+            if shift_right
+                && shape.iter().all(|row| row.trailing_zeros() > 0)
+                && no_collisions(shape, Shift::Right, &filled, put_at)
+            {
                 for row in shape.iter_mut() {
                     *row >>= 1;
                 }
-            } else if !shift_right && shape.iter().all(|row| row.leading_zeros() > 1) && no_collisions(shape, Shift::Left, &filled, put_at) {
+            } else if !shift_right
+                && shape.iter().all(|row| row.leading_zeros() > 1)
+                && no_collisions(shape, Shift::Left, &filled, put_at)
+            {
                 for row in shape.iter_mut() {
                     *row <<= 1;
                 }
@@ -65,33 +76,46 @@ fn solve(input: &str, max_time: usize) -> usize {
                 }
             }
             // cannot drop - place shape here
+            if cycle_height == 0 {
+                // have we created a cycle?
+                if let Some((prev_put_at, prev_shape_index)) =
+                    drop_heights.get(&(shape, shift_index))
+                {
+                    cycle_height = put_at - prev_put_at;
+                    let cycle_length = shape_index - prev_shape_index;
+                    println!(
+                        "Created a cycle of height {}, cycle length {}",
+                        cycle_height, cycle_length
+                    );
+                    let num_cycles_to_skip =
+                        (shape_count - shape_index - cycle_length) / cycle_length;
+                    cycle_height *= num_cycles_to_skip;
+                    shape_index += num_cycles_to_skip * cycle_length;
+                }
+            }
+            drop_heights.insert((shape, shift_index), (put_at, shape_index));
             filled.resize(filled.len().max(put_at + 4), 0);
             for i in 0..4 {
                 filled[put_at + i] |= shape[i];
             }
+            shape_index += 1;
             break;
         }
     }
-    filled.len() - filled.iter().rev().take_while(|&row| row.eq(&0)).count()
-}
-
-fn display(t: usize, filled: &Vec<u8>) {
-    println!("{}", t);
-    for row in filled.iter().rev() {
-        println!("{}", format!("{:#09b}", row).replace("0", ".").replace("1", "#"));
-    }
+    cycle_height + filled.len() - filled.iter().rev().take_while(|&row| row.eq(&0)).count()
 }
 
 fn no_collisions(shape: [u8; 4], shift: Shift, filled: &Vec<u8>, put_at: usize) -> bool {
-    shape.iter().enumerate().all(|(idx, &row)| {
-        filled.get(put_at + idx).unwrap_or(&0) & shift.shift(row) == 0
-    })
+    shape
+        .iter()
+        .enumerate()
+        .all(|(idx, &row)| filled.get(put_at + idx).unwrap_or(&0) & shift.shift(row) == 0)
 }
 
 enum Shift {
     None,
     Right,
-    Left
+    Left,
 }
 
 impl Shift {
