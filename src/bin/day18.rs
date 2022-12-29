@@ -29,37 +29,37 @@ fn problem2_solution(input: &Vec<String>) -> usize {
 }
 
 fn solve(input: &Vec<String>, fill_air_pockets: bool) -> usize {
-    let mut coords: Vec<[i32; 3]> = input.iter().map(parse_line).collect();
-    coords.sort_unstable();
+    let mut rocks: Vec<[i32; 3]> = input.iter().map(parse_line).collect();
+    rocks.sort_unstable();
 
     if fill_air_pockets {
-        let min = [0, 1, 2].map(|axis| coords.iter().map(|c| c[axis]).min().unwrap());
-        let max = [0, 1, 2].map(|axis| coords.iter().map(|c| c[axis]).max().unwrap());
+        let min = [0, 1, 2].map(|axis| rocks.iter().map(|c| c[axis]).min().unwrap());
+        let max = [0, 1, 2].map(|axis| rocks.iter().map(|c| c[axis]).max().unwrap());
         let mut air_cells: HashMap<[i32; 3], bool> = HashMap::new();
         for x in (min[0] + 1)..max[0] {
             for y in (min[1] + 1)..max[1] {
                 for z in (min[2] + 1)..max[2] {
                     let p = [x, y, z];
-                    if coords.binary_search(&p).is_err() && !air_cells.contains_key(&p) {
-                        let (new_air_cells, is_external) = search_air(p, &coords, min, max);
+                    if rocks.binary_search(&p).is_err() && !air_cells.contains_key(&p) {
+                        let (new_air_cells, is_external) = search_air(p, &rocks, min, max);
                         air_cells.extend(new_air_cells.into_iter().map(|c| (c, is_external)));
                     }
                 }
             }
         }
         air_cells.retain(|_, is_external| !*is_external);
-        coords.extend(air_cells.keys());
-        coords.sort_unstable();
+        rocks.extend(air_cells.keys());
+        rocks.sort_unstable();
     }
 
     let mut surface_area = 0;
-    for coord in coords.iter() {
+    for &coord in rocks.iter() {
         surface_area += 6;
         for axis in 0..3 {
             for offset in [-1, 1] {
-                let mut neighbour = *coord;
-                neighbour[axis] += offset;
-                if coords.binary_search(&neighbour).is_ok() {
+                let mut p = coord;
+                p[axis] += offset;
+                if rocks.binary_search(&p).is_ok() {
                     surface_area -= 1;
                 }
             }
@@ -79,10 +79,10 @@ fn search_air(
     let mut air_cells = this_round.clone();
     let mut is_external: bool = false;
     while !this_round.is_empty() {
-        for coord in this_round.iter() {
+        for coord in this_round.drain(..) {
             for axis in 0..3 {
                 for offset in [-1, 1] {
-                    let mut p = *coord;
+                    let mut p = coord;
                     p[axis] += offset;
                     if rocks.binary_search(&p).is_ok() {
                         // rock
@@ -102,7 +102,6 @@ fn search_air(
                 }
             }
         }
-        this_round.clear();
         swap(&mut this_round, &mut next_round);
     }
     (air_cells, is_external)
